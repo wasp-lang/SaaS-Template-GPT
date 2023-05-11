@@ -78,6 +78,7 @@ export default function NavBar() {
               >
                 GPT
               </Disclosure.Button>
+              {user ? (
               <Disclosure.Button
                 as='a'
                 href='/account'
@@ -85,6 +86,15 @@ export default function NavBar() {
               >
                 Account
               </Disclosure.Button>
+              )   :   (
+                <Disclosure.Button
+                as='a'
+                href='/login'
+                className='block px-4 py-2 text-base font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+              >
+                Account
+              </Disclosure.Button>
+              )}
             </div>
           </Disclosure.Panel>
         </>
