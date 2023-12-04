@@ -361,8 +361,8 @@ job dailyStatsJob {
     fn: import { calculateDailyStats } from "@server/workers/calculateDailyStats.js"
   },
   schedule: {
-    // cron: "0 * * * *" // every hour. use in production
-    cron: "* * * * *" // every minute. useful for debugging
+    cron: "0 * * * *" // every hour. use in production
+    // cron: "* * * * *" // every minute. useful for debugging
   },
   entities: [User, DailyStats, Logs, PageViewSource]
 }
