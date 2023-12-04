@@ -7,8 +7,8 @@ import DropdownUser from './DropdownUser';
 
 const navigation = [
   { name: 'GPT Wrapper', href: '/gpt' },
-  { name: 'Documentation', href: '#' }, // TODO: add link to docs
-  { name: 'Blog', href: '#' }, // TODO: add link to blog
+  { name: 'Documentation', href: 'https://open-saas-docs.netlify.app' }, // TODO: add link to docs
+  { name: 'Blog', href: 'https://open-saas-docs.netlify.app/blog' }, // TODO: add link to blog
 ]; 
 
 export default function AppNavBar() {
