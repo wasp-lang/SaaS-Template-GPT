@@ -85,6 +85,7 @@ export const getPaginatedUsers: GetPaginatedUsers<GetPaginatedUsersInput, GetPag
       subscriptionStatus: {
         in: subscriptionStatus || undefined,
       },
+      isMockUser: true,
     },
     select: {
       id: true,
@@ -108,6 +109,7 @@ export const getPaginatedUsers: GetPaginatedUsers<GetPaginatedUsersInput, GetPag
       subscriptionStatus: {
         in: subscriptionStatus || undefined,
       },
+      isMockUser: true,
     },
   });
   const totalPages = Math.ceil(totalUserCount / 10);

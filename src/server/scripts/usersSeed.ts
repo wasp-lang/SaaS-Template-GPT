@@ -21,6 +21,7 @@ export function createRandomUser(): Partial<User> {
     subscriptionStatus: faker.helpers.arrayElement(['active', 'canceled', 'past_due']),
     datePaid: faker.date.recent(),
     credits: faker.number.int({ min: 0, max: 3 }),
+    isMockUser: true,
   };
   return user;
 }
