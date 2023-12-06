@@ -1,71 +1,53 @@
+import Stripe from 'stripe';
 import fetch from 'node-fetch';
 import HttpError from '@wasp/core/HttpError.js';
-import type { RelatedObject } from '@wasp/entities';
+import type { GptResponse, User } from '@wasp/entities';
 import type { GenerateGptResponse, StripePayment } from '@wasp/actions/types';
 import type { StripePaymentResult, OpenAIResponse } from './types';
-import Stripe from 'stripe';
+import { UpdateCurrentUser, UpdateUserById } from '@wasp/actions/types';
+import { fetchStripeCustomer, createStripeCheckoutSession } from './stripeUtils.js';
+import { TierIds } from '@wasp/shared/constants.js';
 
-const stripe = new Stripe(process.env.STRIPE_KEY!, {
-  apiVersion: '2022-11-15',
-});
-
-// WASP_WEB_CLIENT_URL will be set up by Wasp when deploying to production: https://wasp-lang.dev/docs/deploying
-const DOMAIN = process.env.WASP_WEB_CLIENT_URL || 'http://localhost:3000';
-
-export const stripePayment: StripePayment<void, StripePaymentResult> = async (_args, context) => {
-  if (!context.user) {
+export const stripePayment: StripePayment<string, StripePaymentResult> = async (tier, context) => {
+  if (!context.user || !context.user.email) {
     throw new HttpError(401);
   }
-  
-  let customer: Stripe.Customer;
-  const stripeCustomers = await stripe.customers.list({
-    email: context.user.email!,
-  });
-  if (!stripeCustomers.data.length) {
-    console.log('creating customer');
-    customer = await stripe.customers.create({
-      email: context.user.email!,
-    });
+
+  let priceId;
+  if (tier === TierIds.HOBBY) {
+    priceId = process.env.HOBBY_SUBSCRIPTION_PRICE_ID!;
+  } else if (tier === TierIds.PRO) {
+    priceId = process.env.PRO_SUBSCRIPTION_PRICE_ID!;
   } else {
-    console.log('using existing customer');
-    customer = stripeCustomers.data[0];
+    throw new HttpError(400, 'Invalid tier');
   }
 
-  const session: Stripe.Checkout.Session = await stripe.checkout.sessions.create({
-    line_items: [
-      {
-        price: process.env.SUBSCRIPTION_PRICE_ID!,
-        quantity: 1,
-      },
-    ],
-    mode: 'subscription',
-    success_url: `${DOMAIN}/checkout?success=true`,
-    cancel_url: `${DOMAIN}/checkout?canceled=true`,
-    automatic_tax: { enabled: true },
-    customer_update: {
-      address: 'auto',
-    },
-    customer: customer.id,
-  });
+  let customer: Stripe.Customer;
+  let session: Stripe.Checkout.Session;
+  try {
+    customer = await fetchStripeCustomer(context.user.email);
+    session = await createStripeCheckoutSession({
+      priceId,
+      customerId: customer.id,
+    });
+  } catch (error: any) {
+    throw new HttpError(500, error.message);
+  }
 
   await context.entities.User.update({
     where: {
       id: context.user.id,
     },
     data: {
-      checkoutSessionId: session?.id ?? null,
-      stripeId: customer.id ?? null,
+      checkoutSessionId: session.id,
+      stripeId: customer.id,
     },
   });
 
-  if (!session) {
-    throw new HttpError(402, 'Could not create a Stripe session');
-  } else {
-    return {
-      sessionUrl: session.url,
-      sessionId: session.id,
-    };
-  }
+  return {
+    sessionUrl: session.url,
+    sessionId: session.id,
+  };
 };
 
 type GptPayload = {
@@ -74,7 +56,7 @@ type GptPayload = {
   temperature: number;
 };
 
-export const generateGptResponse: GenerateGptResponse<GptPayload, RelatedObject> = async (
+export const generateGptResponse: GenerateGptResponse<GptPayload, GptResponse> = async (
   { instructions, command, temperature },
   context
 ) => {
@@ -124,7 +106,7 @@ export const generateGptResponse: GenerateGptResponse<GptPayload, RelatedObject>
 
     const json = (await response.json()) as OpenAIResponse;
     console.log('response json', json);
-    return context.entities.RelatedObject.create({
+    return context.entities.GptResponse.create({
       data: {
         content: json?.choices[0].message.content,
         user: { connect: { id: context.user.id } },
@@ -142,7 +124,45 @@ export const generateGptResponse: GenerateGptResponse<GptPayload, RelatedObject>
       });
     }
     console.error(error);
+    throw new HttpError(500, error.message);
+  }
+};
+
+export const updateUserById: UpdateUserById<{ id: number; data: Partial<User> }, User> = async (
+  { id, data },
+  context
+) => {
+  if (!context.user) {
+    throw new HttpError(401);
   }
 
-  throw new HttpError(500, 'Something went wrong');
+  if (!context.user.isAdmin) {
+    throw new HttpError(403);
+  }
+
+  const updatedUser = await context.entities.User.update({
+    where: {
+      id,
+    },
+    data,
+  });
+
+  console.log('updated user', updatedUser.id);
+
+  return updatedUser;
+};
+
+export const updateCurrentUser: UpdateCurrentUser<Partial<User>, User> = async (user, context) => {
+  if (!context.user) {
+    throw new HttpError(401);
+  }
+
+  console.log('updating user', user);
+
+  return context.entities.User.update({
+    where: {
+      id: context.user.id,
+    },
+    data: user,
+  });
 };

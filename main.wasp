@@ -1,14 +1,23 @@
 app SaaSTemplate {
   wasp: {
-    version: "^0.11.6"
+    version: "^0.11.8"
   },
-  title: "My SaaS App",
+  title: "My Open SaaS App",
   head: [
         "<meta property='og:type' content='website' />",
-        "<meta property='og:url' content='https://mySaaSapp.com' />",
+        "<meta property='og:url' content='https://opensaas.sh' />", 
         "<meta property='og:description' content='I made a SaaS App. Buy my stuff.' />",
-        "<meta property='og:image' content='src/client/static/image.png' />",
-        // you can put your google analytics script here, too!
+        "<meta property='og:image' content='https://opensaas.sh/public-banner.png' />",
+        "<meta name='twitter:image' content='https://opensaas.sh/public-banner.png' />", 
+        "<meta name='twitter:image:width' content='800' />",
+        "<meta name='twitter:image:height' content='400' />",
+        "<meta name='twitter:card' content='summary_large_image' />",
+        // you can put your analytics scripts here
+        "<script defer data-domain='opensaas.sh' src='https://plausible.apps.twoducks.dev/js/script.js'></script>",
+        // plausible has script extension `script.local.js` for local development TODO: remove before deploying
+        "<script defer data-domain='opensaas.sh' src='https://plausible.apps.twoducks.dev/js/script.local.js'></script>",
+        // google analytics only needs one script and will automatically detect if you are in dev mode 
+        "<!-- Google tag (gtag.js) --><script async src='https://www.googletagmanager.com/gtag/js?id=G-H3LSJCK95H'></script><script>window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-H3LSJCK95H');</script>"
   ],
   // 🔐 Auth out of the box! https://wasp-lang.dev/docs/auth/overview
   auth: {
@@ -17,7 +26,7 @@ app SaaSTemplate {
     methods: {
       email: {
         fromField: {
-          name: "SaaS App",
+          name: "Open SaaS App",
           // make sure this address is the same you registered your SendGrid or MailGun account with!
           email: "vince@wasp-lang.dev" 
         },
@@ -35,10 +44,16 @@ app SaaSTemplate {
         configFn: import { config } from "@server/auth/google.js",
       },
     },
+    signup: {
+      additionalFields: import setAdminUsers from "@server/auth/setAdminUsers.js",
+    },
     onAuthFailedRedirectTo: "/",
   },
   db: { 
-    system: PostgreSQL
+    system: PostgreSQL,
+    seeds: [
+      import { devSeedUsers } from "@server/scripts/usersSeed.js",
+    ]
   },
   client: {
     rootComponent: import App from "@client/App",
@@ -48,20 +63,25 @@ app SaaSTemplate {
     defaultFrom: {
       name: "SaaS App",
       // make sure this address is the same you registered your SendGrid or MailGun account with!
-      email: "vince@wasp-lang.dev" 
+      email: "vince@wasp-lang.dev" // TODO change to generic email before pushing to github
     },
   },
+  // add your dependencies here. the quickest way to find the latest version is `npm view <package-name> version`
   dependencies: [
     ("@headlessui/react", "1.7.13"),
     ("@tailwindcss/forms", "^0.5.3"),
     ("@tailwindcss/typography", "^0.5.7"),
     ("react-hook-form", "7.43.1"),
-    ("react-icons", "4.8.0"),
-    ("request-ip", "3.3.0"),
-    ("@types/request-ip", "0.0.37"),
+    ("react-icons", "4.11.0"),
     ("node-fetch", "3.3.0"),
     ("react-hook-form", "^7.45.4"),
     ("stripe", "11.15.0"),
+    ("react-hot-toast", "^2.4.1"),
+    ("react-apexcharts", "^1.4.1"),
+    ("apexcharts", "^3.41.0"),
+    ("headlessui", "^0.0.0"),
+    ("@faker-js/faker", "8.3.1"),
+    ("@google-analytics/data", "4.1.0")
   ],
 }
 
@@ -73,18 +93,23 @@ entity User {=psl
   id                        Int             @id @default(autoincrement())
   email                     String?         @unique
   password                  String?
+  createdAt                 DateTime        @default(now())
+  lastActiveTimestamp       DateTime        @default(now())
+  isAdmin                   Boolean         @default(false)
   isEmailVerified           Boolean         @default(false)
   emailVerificationSentAt   DateTime?
   passwordResetSentAt       DateTime?
   stripeId                  String? 
   checkoutSessionId         String?
   hasPaid                   Boolean         @default(false)
-  sendEmail                 Boolean         @default(false)
+  subscriptionTier          String?
   subscriptionStatus        String?
+  sendEmail                 Boolean         @default(false)
   datePaid                  DateTime?
   credits                   Int             @default(3)
-  relatedObject             RelatedObject[]
+  gptResponses              GptResponse[]
   externalAuthAssociations  SocialLogin[]
+  contactFormMessages       ContactFormMessage[]     
 psl=}
 
 entity SocialLogin {=psl
@@ -97,8 +122,7 @@ entity SocialLogin {=psl
   @@unique([provider, providerId, userId])
 psl=}
 
-// This can be anything. In most cases, this will be your product
-entity RelatedObject {=psl
+entity GptResponse {=psl
   id                        String          @id @default(uuid())
   content                   String
   user                      User            @relation(fields: [userId], references: [id])
@@ -107,14 +131,55 @@ entity RelatedObject {=psl
   updatedAt                 DateTime        @updatedAt
 psl=}
 
+// TODO: add functionality to allow users to send messages to admin
+// and make them accessible via the admin dashboard
+entity ContactFormMessage {=psl
+  id                        String          @id @default(uuid())
+  content                   String
+  user                      User            @relation(fields: [userId], references: [id])
+  userId                    Int
+  createdAt                 DateTime        @default(now())
+  isRead                    Boolean         @default(false)
+  repliedAt                 DateTime?       
+psl=}
+
+entity DailyStats {=psl 
+  id                               Int             @id @default(autoincrement())
+  date                             DateTime        @default(now()) @unique
+  totalViews                       Int             @default(0)
+  prevDayViewsChangePercent        String          @default("0")
+  userCount                        Int             @default(0)
+  paidUserCount                    Int             @default(0)
+  userDelta                        Int             @default(0)
+  paidUserDelta                    Int             @default(0)
+  totalRevenue                     Float             @default(0)
+  totalProfit                      Float             @default(0)
+  sources                          PageViewSource[]
+psl=}
+
+entity PageViewSource {=psl
+  date                     DateTime        @default(now())       
+  name                     String          
+  visitors                 Int             
+  dailyStats               DailyStats?     @relation(fields: [dailyStatsId], references: [id])
+  dailyStatsId             Int?
+  @@id([date, name])
+psl=}
+
+entity Logs {=psl
+  id                       Int             @id @default(autoincrement())
+  createdAt                DateTime        @default(now())
+  message                  String
+  level                    String
+psl=}
 
 /* 📡 These are the Wasp Routes (You can protect them easily w/ 'authRequired: true');
  * https://wasp-lang.dev/docs/tutorial/pages
  */
 
-route RootRoute { path: "/", to: MainPage }
-page MainPage {
-  component: import Main from "@client/MainPage"
+route LandingPageRoute { path: "/", to: LandingPage }
+page LandingPage {
+  component: import LandingPage from "@client/landing-page/LandingPage"
 }
 
 route LoginRoute { path: "/login", to: LoginPage }
@@ -144,24 +209,80 @@ page EmailVerificationPage {
 
 route GptRoute { path: "/gpt", to: GptPage }
 page GptPage {
-  component: import GptPage from "@client/GptPage"
-}
-
-route PricingRoute { path: "/pricing", to: PricingPage }
-page PricingPage {
-  component: import Pricing from "@client/PricingPage"
+  authRequired: true,
+  component: import GptPage from "@client/app/GptPage"
 }
 
 route AccountRoute { path: "/account", to: AccountPage }
 page AccountPage {
   authRequired: true,
-  component: import Account from "@client/AccountPage"
+  component: import Account from "@client/app/AccountPage"
 }
 
 route CheckoutRoute { path: "/checkout", to: CheckoutPage }
 page CheckoutPage {
   authRequired: true,
-  component: import Checkout from "@client/CheckoutPage"
+  component: import Checkout from "@client/app/CheckoutPage"
+}
+
+route AdminRoute { path: "/admin", to: DashboardPage }
+page DashboardPage {
+  authRequired: true,
+  component: import Dashboard from "@client/admin/pages/DashboardPage"
+}
+
+route AdminUsersRoute { path: "/admin/users", to: AdminUsersPage }
+page AdminUsersPage {
+  authRequired: true,
+  component: import AdminUsers from "@client/admin/pages/Users"
+}
+
+route AdminSettingsRoute { path: "/admin/settings", to: AdminSettingsPage }
+page AdminSettingsPage {
+  authRequired: true,
+  component: import AdminSettings from "@client/admin/pages/Settings"
+}
+
+route AdminChartsRoute { path: "/admin/chart", to: AdminChartsPage }
+page AdminChartsPage {
+  authRequired: true,
+  component: import AdminCharts from "@client/admin/pages/Chart"
+}
+
+route AdminMessagesRoute { path: "/admin/messages", to: AdminMessagesPage }
+page AdminMessagesPage {
+  authRequired: true,
+  component: import AdminMessages from "@client/admin/pages/Messages"
+}
+
+route AdminFormElementsRoute { path: "/admin/forms/form-elements", to: AdminFormElementsPage }
+page AdminFormElementsPage {
+  authRequired: true,
+  component: import AdminForms from "@client/admin/pages/Form/FormElements"
+}
+
+route AdminFormLayoutsRoute { path: "/admin/forms/form-layouts", to: AdminFormLayoutsPage }
+page AdminFormLayoutsPage {
+  authRequired: true,
+  component: import AdminForms from "@client/admin/pages/Form/FormLayout"
+}
+
+route AdminCalendarRoute { path: "/admin/calendar", to: AdminCalendarPage }
+page AdminCalendarPage {
+  authRequired: true,
+  component: import AdminCalendar from "@client/admin/pages/Calendar"
+}
+
+route AdminUIAlertsRoute { path: "/admin/ui/alerts", to: AdminUIAlertsPage }
+page AdminUIAlertsPage {
+  authRequired: true,
+  component: import AdminUI from "@client/admin/pages/UiElements/Alerts"
+}
+
+route AdminUIButtonsRoute { path: "/admin/ui/buttons", to: AdminUIButtonsPage }
+page AdminUIButtonsPage {
+  authRequired: true,
+  component: import AdminUI from "@client/admin/pages/UiElements/Buttons"
 }
 
 /* ⛑ These are the Wasp Operations, which allow the client and server to interact:
@@ -172,7 +293,7 @@ page CheckoutPage {
 
 action generateGptResponse {
   fn: import { generateGptResponse } from "@server/actions.js",
-  entities: [User, RelatedObject]
+  entities: [User, GptResponse]
 }
 
 action stripePayment {
@@ -180,21 +301,31 @@ action stripePayment {
   entities: [User]
 }
 
-// action stripeCreditsPayment {
-//   fn: import { stripeCreditsPayment } from "@server/actions.js",
-//   entities: [User]
-// }
+action updateCurrentUser {
+  fn: import { updateCurrentUser } from "@server/actions.js",
+  entities: [User]
+}
 
-// action updateUser {
-//   fn: import { updateUser } from "@server/actions.js",
-//   entities: [User]
-// }
+action updateUserById {
+  fn: import { updateUserById } from "@server/actions.js",
+  entities: [User]
+}
 
 // 📚 Queries
 
-query getRelatedObjects {
-  fn: import { getRelatedObjects } from "@server/queries.js",
-  entities: [User, RelatedObject]
+query getGptResponses {
+  fn: import { getGptResponses } from "@server/queries.js",
+  entities: [User, GptResponse]
+}
+
+query getDailyStats {
+  fn: import { getDailyStats } from "@server/queries.js",
+  entities: [User, DailyStats]
+}
+
+query getPaginatedUsers {
+  fn: import { getPaginatedUsers } from "@server/queries.js",
+  entities: [User]
 }
 
 /*
@@ -203,8 +334,9 @@ query getRelatedObjects {
  */ 
 
 api stripeWebhook {
-  fn: import { stripeWebhook } from "@server/webhooks.js",
+  fn: import { stripeWebhook } from "@server/webhooks/stripe.js",
   entities: [User],
+  middlewareConfigFn: import { stripeMiddlewareFn } from "@server/webhooks/stripe.js",
   httpRoute: (POST, "/stripe-webhook")
 }
 
@@ -221,4 +353,16 @@ job emailChecker {
     cron: "0 7 * * 1" // at 7:00 am every Monday
   },
   entities: [User]
+}
+
+job dailyStatsJob {
+  executor: PgBoss,
+  perform: {
+    fn: import { calculateDailyStats } from "@server/workers/calculateDailyStats.js"
+  },
+  schedule: {
+    // cron: "0 * * * *" // every hour. use in production
+    cron: "* * * * *" // every minute. useful for debugging
+  },
+  entities: [User, DailyStats, Logs, PageViewSource]
 }
