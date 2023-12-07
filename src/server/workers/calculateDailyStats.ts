@@ -1,4 +1,3 @@
-import type { DailyStatsJob } from '@wasp/jobs/dailyStatsJob';
 import Stripe from 'stripe';
 import { getDailyPageViews, getSources } from './plausibleAnalyticsUtils.js';
 // import { getDailyPageViews, getSources } from './googleAnalyticsUtils.js';
